@@ -1,8 +1,13 @@
 import logging
-from langchain_ollama import OllamaLLM
+import re
+from agents.llm_config import get_llm
 from models import GraphState
 
 logger = logging.getLogger(__name__)
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from thinking model output."""
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 
 def summarize_papers(state: GraphState) -> GraphState:
@@ -13,10 +18,7 @@ def summarize_papers(state: GraphState) -> GraphState:
     logger.info(f"Generating individual summaries for {len(state['papers'])} papers")
     
     try:
-        llm = OllamaLLM(
-            model="qwen2.5:0.5b",
-            temperature=0.5
-        )
+        llm = get_llm(temperature=0.5)
         
         individual_summaries = []
         
@@ -37,7 +39,7 @@ Provide only the summary, no additional text."""
             
             try:
                 response = llm.invoke(prompt)
-                summary = response.strip()
+                summary = _strip_think_tags(response.content)
                 
                 individual_summaries.append({
                     "title": paper["title"],

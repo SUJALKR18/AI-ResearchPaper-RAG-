@@ -1,8 +1,9 @@
 import logging
 import os
+import re
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
-from langchain_ollama import OllamaLLM
+from agents.llm_config import get_llm
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,6 +11,10 @@ logger = logging.getLogger(__name__)
 
 _embedder = None
 _memory = {}
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from thinking model output."""
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 def get_embedder():
     global _embedder
@@ -63,7 +68,7 @@ def query_rag(session_id: str, question: str) -> dict:
         context = "\n\n".join(retrieved_chunks)
         history = "\n".join(_memory.get(session_id, []))
         
-        llm = OllamaLLM(model="qwen2.5:0.5b", temperature=0.3)
+        llm = get_llm(temperature=0.3)
         
         prompt = f"""You are a careful research assistant.
 
@@ -84,7 +89,7 @@ If the context is insufficient, clearly say that the answer cannot be determined
 
 Answer:"""
         
-        answer = llm.invoke(prompt).strip()
+        answer = _strip_think_tags(llm.invoke(prompt).content)
         # _memory.setdefault(session_id, []).append(f"Q: {question}\nA: {answer}")
         
         return {

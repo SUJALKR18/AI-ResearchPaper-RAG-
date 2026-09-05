@@ -1,6 +1,8 @@
 __pycache__/
 venv/
+myenv/
 env/
 .env
 .vscode/
 .idea/
+credentials.json

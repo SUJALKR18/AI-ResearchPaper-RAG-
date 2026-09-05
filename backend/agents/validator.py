@@ -1,11 +1,13 @@
 import logging
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+import re
+from agents.llm_config import get_llm
 from models import GraphState
-from dotenv import load_dotenv
-
-load_dotenv()
 logger = logging.getLogger(__name__)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from thinking model output."""
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 
 def validate_topic(state: GraphState) -> GraphState:
@@ -18,30 +20,31 @@ def validate_topic(state: GraphState) -> GraphState:
 
         # return state
 
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
-        
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=gemini_api_key,
-            temperature=0
-        )
+        llm = get_llm(temperature=0)
         
         prompt = f"""Determine if the following topic is strictly related to AI/Machine Learning/Deep Learning/Natural Language Processing or any AI technology. 
-Respond with only 'YES' or 'NO': {state['topic']}"""
+Respond with ONLY a single word: YES or NO. Do not explain.
+/no_think
+
+Topic: {state['topic']}"""
         
         response = llm.invoke(prompt)
-        answer = response.content.strip().upper()
+        # Strip thinking tags from models like Qwen that output <think> blocks
+        content = _strip_think_tags(response.content).strip().upper()
         
-        logger.info(f"Validation response: {answer}")
+        logger.info(f"Validation response: {content}")
         
-        if answer == "YES":
+        # Check the final (non-thinking) answer
+        if "YES" in content:
             state["is_valid_ai_topic"] = True
             state["error"] = None
-        else:
+        elif "NO" in content:
             state["is_valid_ai_topic"] = False
             state["error"] = f"The topic '{state['topic']}' is not related to AI/Machine Learning technology. Please enter a topic related to Artificial Intelligence, Machine Learning, Deep Learning, Natural Language Processing, Computer Vision, or similar AI technologies."
+        else:
+            # Fallback if neither found clearly
+            state["is_valid_ai_topic"] = True
+            state["error"] = None
             
     except Exception as e:
         logger.error(f"Error validating topic: {str(e)}")
